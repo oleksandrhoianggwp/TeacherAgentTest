@@ -1,0 +1,17 @@
+{
+  "name": "teacher-agent-test",
+  "private": true,
+  "workspaces": [
+    "server",
+    "agent",
+    "web"
+  ],
+  "scripts": {
+    "dev": "concurrently -n back,agent,web -c blue,magenta,green \"npm -w server run dev\" \"npm -w agent run dev\" \"npm -w web run dev\"",
+    "build": "npm -w server run build && npm -w web run build",
+    "start": "npm -w server run start"
+  },
+  "devDependencies": {
+    "concurrently": "^9.1.0"
+  }
+}

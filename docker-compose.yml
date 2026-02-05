@@ -1,0 +1,68 @@
+services:
+  db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: ${DB_USER}
+      POSTGRES_PASSWORD: ${DB_PASSWORD}
+      POSTGRES_DB: ${DB_NAME}
+    ports:
+      - "${DB_PORT:-5432}:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+      interval: 2s
+      timeout: 3s
+      retries: 30
+
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6379:6379"
+
+  agent-avatar:
+    build:
+      context: .
+      dockerfile: agent/Dockerfile
+    env_file:
+      - .env
+    environment:
+      AGENT_HOST: 0.0.0.0
+      AGENT_PORT: 3001
+    ports:
+      - "3001:3001"
+
+  back:
+    build:
+      context: .
+      dockerfile: server/Dockerfile
+    env_file:
+      - .env
+    environment:
+      HOST: 0.0.0.0
+      PORT: 3000
+      DB_HOST: db
+      DB_PORT: 5432
+      REDIS_URL: redis://redis:6379
+      AGENT_AVATAR_URL: http://agent-avatar:3001
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_started
+      agent-avatar:
+        condition: service_started
+    ports:
+      - "3000:3000"
+
+  front:
+    build:
+      context: .
+      dockerfile: web/Dockerfile
+    depends_on:
+      - back
+    ports:
+      - "3050:80"
+
+volumes:
+  pgdata:
