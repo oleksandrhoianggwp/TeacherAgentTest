@@ -128,7 +128,7 @@ export default function DemoSessionPage({ token }) {
             /* Active Session */
             _jsxs("div", { children: [_jsx(RealtimeAvatar, { livekitUrl: livekitUrl, livekitToken: livekitToken, liveAvatarSessionId: liveAvatarSessionId, demoSessionId: demoSessionId, openingText: openingText, firstQuestion: firstQuestion, onTranscript: (type, text) => {
                             setMessages((m) => [...m, { role: type === "user" ? "user" : "assistant", content: text }]);
-                        } }), _jsx("div", { style: {
+                        }, onSessionEnd: onEnd }), _jsx("div", { style: {
                             maxWidth: "1600px",
                             margin: "20px auto 0",
                             padding: "0 20px"

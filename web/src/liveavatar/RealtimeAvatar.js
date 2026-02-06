@@ -15,9 +15,12 @@ export default function RealtimeAvatar(props) {
     const mediaStreamRef = useRef(null);
     const onTranscriptRef = useRef(props.onTranscript);
     const firstQuestionRef = useRef(props.firstQuestion);
+    const onSessionEndRef = useRef(props.onSessionEnd);
     const autoMicTriggeredRef = useRef(false);
+    const lessonEndedRef = useRef(false);
     onTranscriptRef.current = props.onTranscript;
     firstQuestionRef.current = props.firstQuestion;
+    onSessionEndRef.current = props.onSessionEnd;
     // Connect to LiveKit for avatar video
     useEffect(() => {
         if (!props.livekitUrl || !props.livekitToken)
@@ -96,6 +99,17 @@ export default function RealtimeAvatar(props) {
                     case "response.audio_transcript.done":
                         if (data.transcript) {
                             onTranscriptRef.current("assistant", data.transcript);
+                            // Auto-end session only after final short goodbye "Дякую! До побачення!"
+                            const text = data.transcript.toLowerCase();
+                            const isFinalGoodbye = text.includes("до побачення") &&
+                                text.length < 100; // Short final message
+                            if (!lessonEndedRef.current && isFinalGoodbye) {
+                                lessonEndedRef.current = true;
+                                // Wait for avatar to finish speaking, then end
+                                setTimeout(() => {
+                                    onSessionEndRef.current?.();
+                                }, 5000);
+                            }
                         }
                         break;
                     case "input_audio_buffer.speech_started":
@@ -114,7 +128,7 @@ export default function RealtimeAvatar(props) {
                                 if (!mediaStreamRef.current) {
                                     document.querySelector('[data-mic-button]')?.click();
                                 }
-                            }, 7000);
+                            }, 9000);
                         }
                         break;
                     case "avatar.speaking_started":
@@ -237,35 +251,37 @@ export default function RealtimeAvatar(props) {
                             bottom: "0",
                             left: "0",
                             right: "0",
-                            background: "linear-gradient(transparent, rgba(0,0,0,0.8))",
-                            padding: "40px 20px 20px"
+                            background: "linear-gradient(transparent, rgba(0,0,0,0.7))",
+                            padding: "30px 20px 16px"
                         }, children: _jsxs("div", { style: {
                                 display: "flex",
                                 alignItems: "center",
                                 justifyContent: "space-between"
-                            }, children: [_jsxs("div", { style: { display: "flex", alignItems: "center", gap: "12px" }, children: [_jsx("div", { style: {
-                                                width: "48px",
-                                                height: "48px",
-                                                borderRadius: "50%",
-                                                background: "linear-gradient(135deg, #3b82f6 0%, #8b5cf6 100%)",
-                                                display: "flex",
-                                                alignItems: "center",
-                                                justifyContent: "center",
-                                                fontSize: "24px"
-                                            }, children: "\uD83D\uDC69\u200D\uD83C\uDFEB" }), _jsxs("div", { children: [_jsx("div", { style: { color: "#fff", fontWeight: "600", fontSize: "16px" }, children: "\u0412\u0456\u0440\u0442\u0443\u0430\u043B\u044C\u043D\u0438\u0439 \u0432\u0438\u043A\u043B\u0430\u0434\u0430\u0447" }), _jsx("div", { style: { color: "#94a3b8", fontSize: "14px" }, children: status })] })] }), realtimeConnected && (_jsxs("div", { style: {
-                                        display: "flex",
-                                        alignItems: "center",
-                                        gap: "6px",
-                                        background: "rgba(34, 197, 94, 0.2)",
-                                        padding: "6px 12px",
-                                        borderRadius: "20px"
-                                    }, children: [_jsx("div", { style: {
-                                                width: "8px",
-                                                height: "8px",
+                            }, children: [_jsxs("div", { style: { display: "flex", alignItems: "center", gap: "10px" }, children: [_jsx("span", { style: {
+                                                color: "rgba(255,255,255,0.9)",
+                                                fontWeight: "500",
+                                                fontSize: "15px",
+                                                letterSpacing: "0.3px"
+                                            }, children: "\u0412\u0438\u043A\u043B\u0430\u0434\u0430\u0447" }), micEnabled && (_jsx("div", { style: {
+                                                width: "6px",
+                                                height: "6px",
                                                 borderRadius: "50%",
                                                 background: "#22c55e",
-                                                animation: "pulse 2s infinite"
-                                            } }), _jsx("span", { style: { color: "#22c55e", fontSize: "13px", fontWeight: "500" }, children: "\u041E\u043D\u043B\u0430\u0439\u043D" })] }))] }) })] }), _jsxs("div", { style: {
+                                                animation: "pulse 1.5s infinite"
+                                            } }))] }), realtimeConnected && (_jsxs("div", { style: {
+                                        display: "flex",
+                                        alignItems: "center",
+                                        gap: "5px"
+                                    }, children: [_jsx("div", { style: {
+                                                width: "6px",
+                                                height: "6px",
+                                                borderRadius: "50%",
+                                                background: "#22c55e"
+                                            } }), _jsx("span", { style: {
+                                                color: "rgba(255,255,255,0.5)",
+                                                fontSize: "12px",
+                                                fontWeight: "400"
+                                            }, children: "\u043E\u043D\u043B\u0430\u0439\u043D" })] }))] }) })] }), _jsxs("div", { style: {
                     flex: "1",
                     position: "relative",
                     aspectRatio: "16/9",
@@ -283,23 +299,23 @@ export default function RealtimeAvatar(props) {
                             background: "linear-gradient(transparent, rgba(0,0,0,0.8))",
                             padding: "40px 20px 20px"
                         }, children: _jsx("button", { "data-mic-button": true, onClick: toggleMic, disabled: !realtimeConnected, style: {
-                                width: "100%",
-                                padding: "16px",
-                                fontSize: "16px",
-                                fontWeight: "600",
-                                borderRadius: "12px",
-                                border: "none",
+                                width: "auto",
+                                padding: "10px 20px",
+                                fontSize: "14px",
+                                fontWeight: "500",
+                                borderRadius: "8px",
                                 cursor: realtimeConnected ? "pointer" : "not-allowed",
                                 opacity: realtimeConnected ? 1 : 0.5,
                                 background: micEnabled
-                                    ? "linear-gradient(135deg, #ef4444 0%, #dc2626 100%)"
-                                    : "linear-gradient(135deg, #22c55e 0%, #16a34a 100%)",
-                                color: "#fff",
+                                    ? "rgba(239, 68, 68, 0.1)"
+                                    : "rgba(255, 255, 255, 0.08)",
+                                color: micEnabled ? "#f87171" : "#94a3b8",
                                 transition: "all 0.2s",
-                                boxShadow: micEnabled
-                                    ? "0 4px 20px rgba(239, 68, 68, 0.3)"
-                                    : "0 4px 20px rgba(34, 197, 94, 0.3)"
-                            }, children: micEnabled ? "🎤 Вимкнути мікрофон" : "🎤 Увімкнути мікрофон" }) })] }), _jsx("style", { children: `
+                                border: micEnabled
+                                    ? "1px solid rgba(239, 68, 68, 0.2)"
+                                    : "1px solid rgba(255, 255, 255, 0.1)",
+                                boxShadow: "none"
+                            }, children: micEnabled ? "Вимкнути мікрофон" : "Увімкнути мікрофон" }) })] }), _jsx("style", { children: `
         @keyframes spin {
           to { transform: rotate(360deg); }
         }

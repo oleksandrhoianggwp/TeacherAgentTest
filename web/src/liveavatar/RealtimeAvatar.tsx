@@ -10,6 +10,7 @@ type RealtimeAvatarProps = {
   openingText: string;
   firstQuestion: string;
   onTranscript: (type: "user" | "assistant", text: string) => void;
+  onSessionEnd?: () => void;
 };
 
 export default function RealtimeAvatar(props: RealtimeAvatarProps) {
@@ -26,10 +27,13 @@ export default function RealtimeAvatar(props: RealtimeAvatarProps) {
   const mediaStreamRef = useRef<MediaStream | null>(null);
   const onTranscriptRef = useRef(props.onTranscript);
   const firstQuestionRef = useRef(props.firstQuestion);
+  const onSessionEndRef = useRef(props.onSessionEnd);
   const autoMicTriggeredRef = useRef(false);
+  const lessonEndedRef = useRef(false);
 
   onTranscriptRef.current = props.onTranscript;
   firstQuestionRef.current = props.firstQuestion;
+  onSessionEndRef.current = props.onSessionEnd;
 
   // Connect to LiveKit for avatar video
   useEffect(() => {
@@ -122,6 +126,18 @@ export default function RealtimeAvatar(props: RealtimeAvatarProps) {
           case "response.audio_transcript.done":
             if (data.transcript) {
               onTranscriptRef.current("assistant", data.transcript);
+              // Auto-end session only after final short goodbye "Дякую! До побачення!"
+              const text = data.transcript.toLowerCase();
+              const isFinalGoodbye =
+                                     text.includes("до побачення") &&
+                                     text.length < 100; // Short final message
+              if (!lessonEndedRef.current && isFinalGoodbye) {
+                lessonEndedRef.current = true;
+                // Wait for avatar to finish speaking, then end
+                setTimeout(() => {
+                  onSessionEndRef.current?.();
+                }, 5000);
+              }
             }
             break;
 
@@ -143,7 +159,7 @@ export default function RealtimeAvatar(props: RealtimeAvatarProps) {
                 if (!mediaStreamRef.current) {
                   document.querySelector<HTMLButtonElement>('[data-mic-button]')?.click();
                 }
-              }, 7000);
+              }, 9000);
             }
             break;
 
@@ -303,54 +319,51 @@ export default function RealtimeAvatar(props: RealtimeAvatarProps) {
           bottom: "0",
           left: "0",
           right: "0",
-          background: "linear-gradient(transparent, rgba(0,0,0,0.8))",
-          padding: "40px 20px 20px"
+          background: "linear-gradient(transparent, rgba(0,0,0,0.7))",
+          padding: "30px 20px 16px"
         }}>
           <div style={{
             display: "flex",
             alignItems: "center",
             justifyContent: "space-between"
           }}>
-            <div style={{ display: "flex", alignItems: "center", gap: "12px" }}>
-              <div style={{
-                width: "48px",
-                height: "48px",
-                borderRadius: "50%",
-                background: "linear-gradient(135deg, #3b82f6 0%, #8b5cf6 100%)",
-                display: "flex",
-                alignItems: "center",
-                justifyContent: "center",
-                fontSize: "24px"
+            <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
+              <span style={{
+                color: "rgba(255,255,255,0.9)",
+                fontWeight: "500",
+                fontSize: "15px",
+                letterSpacing: "0.3px"
               }}>
-                👩‍🏫
-              </div>
-              <div>
-                <div style={{ color: "#fff", fontWeight: "600", fontSize: "16px" }}>
-                  Віртуальний викладач
-                </div>
-                <div style={{ color: "#94a3b8", fontSize: "14px" }}>
-                  {status}
-                </div>
-              </div>
+                Викладач
+              </span>
+              {micEnabled && (
+                <div style={{
+                  width: "6px",
+                  height: "6px",
+                  borderRadius: "50%",
+                  background: "#22c55e",
+                  animation: "pulse 1.5s infinite"
+                }} />
+              )}
             </div>
             {realtimeConnected && (
               <div style={{
                 display: "flex",
                 alignItems: "center",
-                gap: "6px",
-                background: "rgba(34, 197, 94, 0.2)",
-                padding: "6px 12px",
-                borderRadius: "20px"
+                gap: "5px"
               }}>
                 <div style={{
-                  width: "8px",
-                  height: "8px",
+                  width: "6px",
+                  height: "6px",
                   borderRadius: "50%",
-                  background: "#22c55e",
-                  animation: "pulse 2s infinite"
+                  background: "#22c55e"
                 }} />
-                <span style={{ color: "#22c55e", fontSize: "13px", fontWeight: "500" }}>
-                  Онлайн
+                <span style={{
+                  color: "rgba(255,255,255,0.5)",
+                  fontSize: "12px",
+                  fontWeight: "400"
+                }}>
+                  онлайн
                 </span>
               </div>
             )}
@@ -386,25 +399,25 @@ export default function RealtimeAvatar(props: RealtimeAvatarProps) {
             onClick={toggleMic}
             disabled={!realtimeConnected}
             style={{
-              width: "100%",
-              padding: "16px",
-              fontSize: "16px",
-              fontWeight: "600",
-              borderRadius: "12px",
-              border: "none",
+              width: "auto",
+              padding: "10px 20px",
+              fontSize: "14px",
+              fontWeight: "500",
+              borderRadius: "8px",
               cursor: realtimeConnected ? "pointer" : "not-allowed",
               opacity: realtimeConnected ? 1 : 0.5,
               background: micEnabled
-                ? "linear-gradient(135deg, #ef4444 0%, #dc2626 100%)"
-                : "linear-gradient(135deg, #22c55e 0%, #16a34a 100%)",
-              color: "#fff",
+                ? "rgba(239, 68, 68, 0.1)"
+                : "rgba(255, 255, 255, 0.08)",
+              color: micEnabled ? "#f87171" : "#94a3b8",
               transition: "all 0.2s",
-              boxShadow: micEnabled
-                ? "0 4px 20px rgba(239, 68, 68, 0.3)"
-                : "0 4px 20px rgba(34, 197, 94, 0.3)"
+              border: micEnabled
+                ? "1px solid rgba(239, 68, 68, 0.2)"
+                : "1px solid rgba(255, 255, 255, 0.1)",
+              boxShadow: "none"
             }}
           >
-            {micEnabled ? "🎤 Вимкнути мікрофон" : "🎤 Увімкнути мікрофон"}
+            {micEnabled ? "Вимкнути мікрофон" : "Увімкнути мікрофон"}
           </button>
         </div>
       </div>

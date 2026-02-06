@@ -199,6 +199,7 @@ export default function DemoSessionPage({ token }: DemoSessionPageProps) {
             onTranscript={(type, text) => {
               setMessages((m) => [...m, { role: type === "user" ? "user" : "assistant", content: text }]);
             }}
+            onSessionEnd={onEnd}
           />
 
           {/* Transcript */}
