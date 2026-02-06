@@ -15,7 +15,6 @@ export default function RealtimeAvatar(props) {
     const mediaStreamRef = useRef(null);
     const onTranscriptRef = useRef(props.onTranscript);
     const firstQuestionRef = useRef(props.firstQuestion);
-    // Keep refs updated
     onTranscriptRef.current = props.onTranscript;
     firstQuestionRef.current = props.firstQuestion;
     // Connect to LiveKit for avatar video
@@ -24,15 +23,14 @@ export default function RealtimeAvatar(props) {
             return;
         const r = new Room({ adaptiveStream: true, dynacast: true });
         setRoom(r);
-        setStatus("Підключення до LiveKit...");
+        setStatus("Підключення до відео...");
         r.connect(props.livekitUrl, props.livekitToken, { autoSubscribe: true })
             .then(() => {
             setConnected(true);
-            setStatus("Підключено. Увімкни мікрофон.");
+            setStatus("Готово. Увімкніть мікрофон.");
             r.on(RoomEvent.TrackSubscribed, (track, _pub, participant) => {
                 if (track.kind === Track.Kind.Video && avatarVideoRef.current) {
                     track.attach(avatarVideoRef.current);
-                    setStatus("Аватар готовий");
                 }
                 if (track.kind === Track.Kind.Audio && audioRef.current) {
                     track.attach(audioRef.current);
@@ -45,11 +43,10 @@ export default function RealtimeAvatar(props) {
             setRoom(null);
         };
     }, [props.livekitUrl, props.livekitToken]);
-    // Connect to OpenAI Realtime через backend AudioRouter (with LiveAvatar lip-sync)
+    // Connect to OpenAI Realtime via backend AudioRouter
     useEffect(() => {
         if (!connected || !props.demoSessionId)
             return;
-        // Підключаємось до backend AudioRouter WebSocket
         const protocol = window.location.protocol === "https:" ? "wss:" : "ws:";
         const wsUrl = `${protocol}//${window.location.host}/api/realtime/${props.demoSessionId}`;
         console.log("[Realtime] Connecting to AudioRouter:", wsUrl);
@@ -57,9 +54,8 @@ export default function RealtimeAvatar(props) {
         realtimeWsRef.current = ws;
         let sessionConfigured = false;
         ws.onopen = () => {
-            console.log("[Realtime] WebSocket connected to AudioRouter");
+            console.log("[Realtime] WebSocket connected");
             setRealtimeConnected(true);
-            // Backend AudioRouter handles session.update - just wait for session.updated
         };
         ws.onmessage = async (event) => {
             try {
@@ -71,17 +67,12 @@ export default function RealtimeAvatar(props) {
                     text = event.data;
                 }
                 const data = JSON.parse(text);
-                // Only log non-audio events to reduce noise
-                if (data.type !== "response.audio.delta" && data.type !== "response.audio_transcript.delta") {
-                    console.log("[Realtime]", data.type);
-                }
                 switch (data.type) {
                     case "session.updated":
-                        console.log("[Realtime] Session configured by backend");
                         if (!sessionConfigured) {
                             sessionConfigured = true;
-                            setStatus("Сесія готова. Увімкни мікрофон.");
-                            // Send initial greeting after session is configured
+                            setStatus("Готово. Увімкніть мікрофон.");
+                            // Trigger AI to start the lesson
                             ws.send(JSON.stringify({
                                 type: "conversation.item.create",
                                 item: {
@@ -93,41 +84,33 @@ export default function RealtimeAvatar(props) {
                             ws.send(JSON.stringify({ type: "response.create" }));
                         }
                         break;
-                    // Audio is now handled by LiveAvatar via LiveKit - no direct playback needed
                     case "response.audio.delta":
-                        // Audio routed to LiveAvatar for lip-sync, comes back via LiveKit
+                        // Audio routed to LiveAvatar for lip-sync
                         break;
                     case "conversation.item.input_audio_transcription.completed":
                         if (data.transcript) {
-                            console.log("[Realtime] User:", data.transcript);
                             onTranscriptRef.current("user", data.transcript);
                         }
                         break;
                     case "response.audio_transcript.done":
                         if (data.transcript) {
-                            console.log("[Realtime] Assistant:", data.transcript);
                             onTranscriptRef.current("assistant", data.transcript);
                         }
                         break;
                     case "input_audio_buffer.speech_started":
-                        console.log("[Realtime] User speaking...");
                         setStatus("Слухаю...");
                         break;
                     case "input_audio_buffer.speech_stopped":
-                        console.log("[Realtime] User stopped");
                         setStatus("Обробляю...");
                         break;
                     case "response.done":
-                        console.log("[Realtime] Response complete");
-                        setStatus("Готово. Твоя черга.");
+                        setStatus("Ваша черга говорити");
                         break;
                     case "avatar.speaking_started":
-                        console.log("[Realtime] Avatar speaking (lip-sync)");
-                        setStatus("Говорю...");
+                        setStatus("Викладач говорить...");
                         break;
                     case "avatar.speaking_ended":
-                        console.log("[Realtime] Avatar finished speaking");
-                        setStatus("Готово. Твоя черга.");
+                        setStatus("Ваша черга говорити");
                         break;
                     case "error":
                         console.error("[Realtime] Error:", data.error);
@@ -145,7 +128,7 @@ export default function RealtimeAvatar(props) {
             setRealtimeConnected(false);
         };
         ws.onclose = (event) => {
-            console.log("[Realtime] WebSocket closed:", event.code, event.reason);
+            console.log("[Realtime] WebSocket closed:", event.code);
             setRealtimeConnected(false);
         };
         return () => {
@@ -154,10 +137,8 @@ export default function RealtimeAvatar(props) {
         };
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [connected, props.demoSessionId]);
-    // Toggle microphone and start/stop audio streaming
     async function toggleMic() {
         if (!micEnabled) {
-            // Start microphone
             try {
                 const stream = await navigator.mediaDevices.getUserMedia({
                     audio: {
@@ -169,8 +150,7 @@ export default function RealtimeAvatar(props) {
                 });
                 mediaStreamRef.current = stream;
                 setMicEnabled(true);
-                setStatus("Мікрофон увімкнено. Говори.");
-                // Setup audio processing
+                setStatus("Мікрофон увімкнено. Говоріть.");
                 if (!audioContextRef.current) {
                     audioContextRef.current = new AudioContext({ sampleRate: 24000 });
                 }
@@ -200,30 +180,121 @@ export default function RealtimeAvatar(props) {
             }
         }
         else {
-            // Stop microphone
             if (mediaStreamRef.current) {
                 mediaStreamRef.current.getTracks().forEach((track) => track.stop());
                 mediaStreamRef.current = null;
             }
             setMicEnabled(false);
-            setStatus("Мікрофон вимкнено.");
+            setStatus("Мікрофон вимкнено");
         }
     }
-    return (_jsxs("div", { style: { display: "flex", gap: "24px", marginTop: "16px" }, children: [_jsxs("div", { style: { flex: "1", position: "relative", minHeight: "700px", background: "#000", borderRadius: "16px", overflow: "hidden" }, children: [_jsx("video", { ref: avatarVideoRef, autoPlay: true, playsInline: true, muted: true, style: { width: "100%", height: "100%", objectFit: "cover" } }), _jsx("audio", { ref: audioRef, autoPlay: true }), !connected && (_jsx("div", { style: {
+    return (_jsxs("div", { style: {
+            display: "flex",
+            gap: "20px",
+            maxWidth: "1600px",
+            margin: "0 auto",
+            padding: "0 20px"
+        }, children: [_jsxs("div", { style: {
+                    flex: "1",
+                    position: "relative",
+                    aspectRatio: "16/9",
+                    minHeight: "500px",
+                    background: "linear-gradient(180deg, #1e293b 0%, #0f172a 100%)",
+                    borderRadius: "20px",
+                    overflow: "hidden",
+                    boxShadow: "0 8px 32px rgba(0,0,0,0.4)",
+                    border: "1px solid rgba(255,255,255,0.1)"
+                }, children: [_jsx("video", { ref: avatarVideoRef, autoPlay: true, playsInline: true, muted: true, style: {
+                            width: "100%",
+                            height: "100%",
+                            objectFit: "cover"
+                        } }), _jsx("audio", { ref: audioRef, autoPlay: true }), !connected && (_jsxs("div", { style: {
                             position: "absolute",
                             top: "50%",
                             left: "50%",
                             transform: "translate(-50%, -50%)",
-                            color: "white"
-                        }, children: _jsx("div", { className: "pulse" }) })), _jsxs("div", { style: {
+                            textAlign: "center"
+                        }, children: [_jsx("div", { style: {
+                                    width: "60px",
+                                    height: "60px",
+                                    border: "3px solid rgba(255,255,255,0.3)",
+                                    borderTopColor: "#3b82f6",
+                                    borderRadius: "50%",
+                                    animation: "spin 1s linear infinite"
+                                } }), _jsx("p", { style: { color: "#94a3b8", marginTop: "16px" }, children: "\u041F\u0456\u0434\u043A\u043B\u044E\u0447\u0435\u043D\u043D\u044F..." })] })), _jsx("div", { style: {
                             position: "absolute",
-                            bottom: "16px",
-                            left: "16px",
-                            right: "16px",
-                            fontSize: "15px",
-                            color: "white",
-                            background: "rgba(0,0,0,0.6)",
-                            padding: "12px 16px",
-                            borderRadius: "10px"
-                        }, children: [_jsx("strong", { children: "\u041C\u0430\u0440\u0456\u044F" }), " - ", status, realtimeConnected && _jsx("span", { style: { marginLeft: "8px", color: "#4ade80" }, children: "\u25CF Realtime" })] })] }), _jsxs("div", { style: { flex: "1", position: "relative", minHeight: "700px", background: "#000", borderRadius: "16px", overflow: "hidden" }, children: [_jsx(UserWebcam, { enabled: connected }), _jsx("div", { style: { position: "absolute", bottom: "16px", left: "16px", right: "16px" }, children: _jsx("button", { className: micEnabled ? "danger" : "primary", onClick: toggleMic, disabled: !realtimeConnected, style: { width: "100%", padding: "14px", fontSize: "16px" }, children: micEnabled ? "🎤 Вимкнути мікрофон" : "🎤 Увімкнути мікрофон" }) })] })] }));
+                            bottom: "0",
+                            left: "0",
+                            right: "0",
+                            background: "linear-gradient(transparent, rgba(0,0,0,0.8))",
+                            padding: "40px 20px 20px"
+                        }, children: _jsxs("div", { style: {
+                                display: "flex",
+                                alignItems: "center",
+                                justifyContent: "space-between"
+                            }, children: [_jsxs("div", { style: { display: "flex", alignItems: "center", gap: "12px" }, children: [_jsx("div", { style: {
+                                                width: "48px",
+                                                height: "48px",
+                                                borderRadius: "50%",
+                                                background: "linear-gradient(135deg, #3b82f6 0%, #8b5cf6 100%)",
+                                                display: "flex",
+                                                alignItems: "center",
+                                                justifyContent: "center",
+                                                fontSize: "24px"
+                                            }, children: "\uD83D\uDC69\u200D\uD83C\uDFEB" }), _jsxs("div", { children: [_jsx("div", { style: { color: "#fff", fontWeight: "600", fontSize: "16px" }, children: "\u0412\u0456\u0440\u0442\u0443\u0430\u043B\u044C\u043D\u0438\u0439 \u0432\u0438\u043A\u043B\u0430\u0434\u0430\u0447" }), _jsx("div", { style: { color: "#94a3b8", fontSize: "14px" }, children: status })] })] }), realtimeConnected && (_jsxs("div", { style: {
+                                        display: "flex",
+                                        alignItems: "center",
+                                        gap: "6px",
+                                        background: "rgba(34, 197, 94, 0.2)",
+                                        padding: "6px 12px",
+                                        borderRadius: "20px"
+                                    }, children: [_jsx("div", { style: {
+                                                width: "8px",
+                                                height: "8px",
+                                                borderRadius: "50%",
+                                                background: "#22c55e",
+                                                animation: "pulse 2s infinite"
+                                            } }), _jsx("span", { style: { color: "#22c55e", fontSize: "13px", fontWeight: "500" }, children: "\u041E\u043D\u043B\u0430\u0439\u043D" })] }))] }) })] }), _jsxs("div", { style: {
+                    flex: "1",
+                    position: "relative",
+                    aspectRatio: "16/9",
+                    minHeight: "500px",
+                    background: "linear-gradient(180deg, #1e293b 0%, #0f172a 100%)",
+                    borderRadius: "20px",
+                    overflow: "hidden",
+                    boxShadow: "0 8px 32px rgba(0,0,0,0.4)",
+                    border: "1px solid rgba(255,255,255,0.1)"
+                }, children: [_jsx(UserWebcam, { enabled: connected }), _jsx("div", { style: {
+                            position: "absolute",
+                            bottom: "0",
+                            left: "0",
+                            right: "0",
+                            background: "linear-gradient(transparent, rgba(0,0,0,0.8))",
+                            padding: "40px 20px 20px"
+                        }, children: _jsx("button", { onClick: toggleMic, disabled: !realtimeConnected, style: {
+                                width: "100%",
+                                padding: "16px",
+                                fontSize: "16px",
+                                fontWeight: "600",
+                                borderRadius: "12px",
+                                border: "none",
+                                cursor: realtimeConnected ? "pointer" : "not-allowed",
+                                opacity: realtimeConnected ? 1 : 0.5,
+                                background: micEnabled
+                                    ? "linear-gradient(135deg, #ef4444 0%, #dc2626 100%)"
+                                    : "linear-gradient(135deg, #22c55e 0%, #16a34a 100%)",
+                                color: "#fff",
+                                transition: "all 0.2s",
+                                boxShadow: micEnabled
+                                    ? "0 4px 20px rgba(239, 68, 68, 0.3)"
+                                    : "0 4px 20px rgba(34, 197, 94, 0.3)"
+                            }, children: micEnabled ? "🎤 Вимкнути мікрофон" : "🎤 Увімкнути мікрофон" }) })] }), _jsx("style", { children: `
+        @keyframes spin {
+          to { transform: rotate(360deg); }
+        }
+        @keyframes pulse {
+          0%, 100% { opacity: 1; }
+          50% { opacity: 0.5; }
+        }
+      ` })] }));
 }
