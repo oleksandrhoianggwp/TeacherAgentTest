@@ -15,6 +15,7 @@ export default function RealtimeAvatar(props) {
     const mediaStreamRef = useRef(null);
     const onTranscriptRef = useRef(props.onTranscript);
     const firstQuestionRef = useRef(props.firstQuestion);
+    const autoMicTriggeredRef = useRef(false);
     onTranscriptRef.current = props.onTranscript;
     firstQuestionRef.current = props.firstQuestion;
     // Connect to LiveKit for avatar video
@@ -105,6 +106,16 @@ export default function RealtimeAvatar(props) {
                         break;
                     case "response.done":
                         setStatus("Ваша черга говорити");
+                        // Auto-enable mic after first AI greeting
+                        if (!autoMicTriggeredRef.current) {
+                            autoMicTriggeredRef.current = true;
+                            // Delay to let avatar finish speaking
+                            setTimeout(() => {
+                                if (!mediaStreamRef.current) {
+                                    document.querySelector('[data-mic-button]')?.click();
+                                }
+                            }, 7000);
+                        }
                         break;
                     case "avatar.speaking_started":
                         setStatus("Викладач говорить...");
@@ -271,7 +282,7 @@ export default function RealtimeAvatar(props) {
                             right: "0",
                             background: "linear-gradient(transparent, rgba(0,0,0,0.8))",
                             padding: "40px 20px 20px"
-                        }, children: _jsx("button", { onClick: toggleMic, disabled: !realtimeConnected, style: {
+                        }, children: _jsx("button", { "data-mic-button": true, onClick: toggleMic, disabled: !realtimeConnected, style: {
                                 width: "100%",
                                 padding: "16px",
                                 fontSize: "16px",

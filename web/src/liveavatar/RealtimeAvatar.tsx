@@ -26,6 +26,7 @@ export default function RealtimeAvatar(props: RealtimeAvatarProps) {
   const mediaStreamRef = useRef<MediaStream | null>(null);
   const onTranscriptRef = useRef(props.onTranscript);
   const firstQuestionRef = useRef(props.firstQuestion);
+  const autoMicTriggeredRef = useRef(false);
 
   onTranscriptRef.current = props.onTranscript;
   firstQuestionRef.current = props.firstQuestion;
@@ -134,6 +135,16 @@ export default function RealtimeAvatar(props: RealtimeAvatarProps) {
 
           case "response.done":
             setStatus("Ваша черга говорити");
+            // Auto-enable mic after first AI greeting
+            if (!autoMicTriggeredRef.current) {
+              autoMicTriggeredRef.current = true;
+              // Delay to let avatar finish speaking
+              setTimeout(() => {
+                if (!mediaStreamRef.current) {
+                  document.querySelector<HTMLButtonElement>('[data-mic-button]')?.click();
+                }
+              }, 7000);
+            }
             break;
 
           case "avatar.speaking_started":
@@ -371,6 +382,7 @@ export default function RealtimeAvatar(props: RealtimeAvatarProps) {
           padding: "40px 20px 20px"
         }}>
           <button
+            data-mic-button
             onClick={toggleMic}
             disabled={!realtimeConnected}
             style={{
