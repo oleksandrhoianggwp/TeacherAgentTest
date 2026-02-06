@@ -5,7 +5,8 @@ import UserWebcam from "./UserWebcam";
 type RealtimeAvatarProps = {
   livekitUrl: string;
   livekitToken: string;
-  liveAvatarSessionId: string;
+  liveAvatarSessionId: string; // Used for LiveKit connection
+  demoSessionId: string; // Used for Realtime WebSocket
   openingText: string;
   firstQuestion: string;
   onTranscript: (type: "user" | "assistant", text: string) => void;
@@ -23,6 +24,12 @@ export default function RealtimeAvatar(props: RealtimeAvatarProps) {
   const realtimeWsRef = useRef<WebSocket | null>(null);
   const audioContextRef = useRef<AudioContext | null>(null);
   const mediaStreamRef = useRef<MediaStream | null>(null);
+  const onTranscriptRef = useRef(props.onTranscript);
+  const firstQuestionRef = useRef(props.firstQuestion);
+
+  // Keep refs updated
+  onTranscriptRef.current = props.onTranscript;
+  firstQuestionRef.current = props.firstQuestion;
 
   // Connect to LiveKit for avatar video
   useEffect(() => {
@@ -55,98 +62,103 @@ export default function RealtimeAvatar(props: RealtimeAvatarProps) {
     };
   }, [props.livekitUrl, props.livekitToken]);
 
-  // Connect to OpenAI Realtime через backend proxy
+  // Connect to OpenAI Realtime через backend AudioRouter (with LiveAvatar lip-sync)
   useEffect(() => {
-    if (!connected || !props.liveAvatarSessionId) return;
+    if (!connected || !props.demoSessionId) return;
 
-    // Підключаємось до backend WebSocket proxy
+    // Підключаємось до backend AudioRouter WebSocket
     const protocol = window.location.protocol === "https:" ? "wss:" : "ws:";
-    const wsUrl = `${protocol}//${window.location.host}/api/realtime/${props.liveAvatarSessionId}`;
+    const wsUrl = `${protocol}//${window.location.host}/api/realtime/${props.demoSessionId}`;
 
+    console.log("[Realtime] Connecting to AudioRouter:", wsUrl);
     const ws = new WebSocket(wsUrl);
     realtimeWsRef.current = ws;
 
+    let sessionConfigured = false;
+
     ws.onopen = () => {
-      console.log("[Realtime] WebSocket connected to:", wsUrl);
+      console.log("[Realtime] WebSocket connected to AudioRouter");
       setRealtimeConnected(true);
-
-      // Configure session
-      ws.send(
-        JSON.stringify({
-          type: "session.update",
-          session: {
-            modalities: ["text", "audio"],
-            instructions: `Ти Марія, віртуальна викладачка. ${props.openingText}`,
-            voice: "shimmer",
-            input_audio_format: "pcm16",
-            output_audio_format: "pcm16",
-            input_audio_transcription: {
-              model: "whisper-1"
-            },
-            turn_detection: {
-              type: "server_vad",
-              threshold: 0.5,
-              prefix_padding_ms: 300,
-              silence_duration_ms: 1200
-            }
-          }
-        })
-      );
-
-      // Send initial greeting
-      ws.send(
-        JSON.stringify({
-          type: "conversation.item.create",
-          item: {
-            type: "message",
-            role: "user",
-            content: [{ type: "input_text", text: props.firstQuestion }]
-          }
-        })
-      );
-
-      ws.send(JSON.stringify({ type: "response.create" }));
+      // Backend AudioRouter handles session.update - just wait for session.updated
     };
 
-    ws.onmessage = (event) => {
+    ws.onmessage = async (event) => {
       try {
-        const data = JSON.parse(event.data);
-        console.log("[Realtime]", data.type, data);
+        let text: string;
+        if (event.data instanceof Blob) {
+          text = await event.data.text();
+        } else {
+          text = event.data;
+        }
+        const data = JSON.parse(text);
+
+        // Only log non-audio events to reduce noise
+        if (data.type !== "response.audio.delta" && data.type !== "response.audio_transcript.delta") {
+          console.log("[Realtime]", data.type);
+        }
 
         switch (data.type) {
-          case "response.audio.delta":
-            if (data.delta) {
-              console.log("[Realtime] Audio delta received, length:", data.delta.length);
-              playAudioChunk(data.delta);
+          case "session.updated":
+            console.log("[Realtime] Session configured by backend");
+            if (!sessionConfigured) {
+              sessionConfigured = true;
+              setStatus("Сесія готова. Увімкни мікрофон.");
+              // Send initial greeting after session is configured
+              ws.send(
+                JSON.stringify({
+                  type: "conversation.item.create",
+                  item: {
+                    type: "message",
+                    role: "user",
+                    content: [{ type: "input_text", text: firstQuestionRef.current }]
+                  }
+                })
+              );
+              ws.send(JSON.stringify({ type: "response.create" }));
             }
+            break;
+
+          // Audio is now handled by LiveAvatar via LiveKit - no direct playback needed
+          case "response.audio.delta":
+            // Audio routed to LiveAvatar for lip-sync, comes back via LiveKit
             break;
 
           case "conversation.item.input_audio_transcription.completed":
             if (data.transcript) {
-              console.log("[Realtime] User transcript:", data.transcript);
-              props.onTranscript("user", data.transcript);
+              console.log("[Realtime] User:", data.transcript);
+              onTranscriptRef.current("user", data.transcript);
             }
             break;
 
           case "response.audio_transcript.done":
             if (data.transcript) {
-              console.log("[Realtime] Assistant transcript:", data.transcript);
-              props.onTranscript("assistant", data.transcript);
+              console.log("[Realtime] Assistant:", data.transcript);
+              onTranscriptRef.current("assistant", data.transcript);
             }
             break;
 
           case "input_audio_buffer.speech_started":
-            console.log("[Realtime] Speech started");
+            console.log("[Realtime] User speaking...");
             setStatus("Слухаю...");
             break;
 
           case "input_audio_buffer.speech_stopped":
-            console.log("[Realtime] Speech stopped");
+            console.log("[Realtime] User stopped");
             setStatus("Обробляю...");
             break;
 
           case "response.done":
-            console.log("[Realtime] Response done");
+            console.log("[Realtime] Response complete");
+            setStatus("Готово. Твоя черга.");
+            break;
+
+          case "avatar.speaking_started":
+            console.log("[Realtime] Avatar speaking (lip-sync)");
+            setStatus("Говорю...");
+            break;
+
+          case "avatar.speaking_ended":
+            console.log("[Realtime] Avatar finished speaking");
             setStatus("Готово. Твоя черга.");
             break;
 
@@ -154,14 +166,6 @@ export default function RealtimeAvatar(props: RealtimeAvatarProps) {
             console.error("[Realtime] Error:", data.error);
             setStatus(`Помилка: ${data.error?.message || "unknown"}`);
             break;
-
-          case "session.created":
-          case "session.updated":
-            console.log("[Realtime] Session:", data.type);
-            break;
-
-          default:
-            console.log("[Realtime] Unhandled event:", data.type);
         }
       } catch (err) {
         console.error("[Realtime] Error parsing message:", err);
@@ -170,7 +174,7 @@ export default function RealtimeAvatar(props: RealtimeAvatarProps) {
 
     ws.onerror = (err) => {
       console.error("[Realtime] WebSocket error:", err);
-      setStatus("Помилка підключення до Realtime");
+      setStatus("Помилка підключення");
       setRealtimeConnected(false);
     };
 
@@ -183,35 +187,8 @@ export default function RealtimeAvatar(props: RealtimeAvatarProps) {
       ws.close();
       realtimeWsRef.current = null;
     };
-  }, [connected, props.liveAvatarSessionId, props.openingText, props.firstQuestion, props.onTranscript]);
-
-  // Play audio chunk from Realtime
-  function playAudioChunk(base64Audio: string) {
-    try {
-      if (!audioContextRef.current) {
-        audioContextRef.current = new AudioContext({ sampleRate: 24000 });
-        console.log("[Audio] AudioContext created");
-      }
-
-      const audioData = Uint8Array.from(atob(base64Audio), (c) => c.charCodeAt(0));
-      const audioBuffer = audioContextRef.current.createBuffer(1, audioData.length / 2, 24000);
-      const channelData = audioBuffer.getChannelData(0);
-
-      // Convert PCM16 to Float32
-      for (let i = 0; i < audioData.length / 2; i++) {
-        const int16 = (audioData[i * 2 + 1] << 8) | audioData[i * 2];
-        channelData[i] = int16 / 32768.0;
-      }
-
-      const source = audioContextRef.current.createBufferSource();
-      source.buffer = audioBuffer;
-      source.connect(audioContextRef.current.destination);
-      source.start();
-      console.log("[Audio] Playing chunk, duration:", audioBuffer.duration);
-    } catch (err) {
-      console.error("[Audio] Error playing chunk:", err);
-    }
-  }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [connected, props.demoSessionId]);
 
   // Toggle microphone and start/stop audio streaming
   async function toggleMic() {

@@ -49,6 +49,7 @@ export default function RealtimeAvatar(props) {
         const wsUrl = `${protocol}//${window.location.host}/api/realtime/${props.liveAvatarSessionId}`;
         const ws = new WebSocket(wsUrl);
         realtimeWsRef.current = ws;
+        let sessionConfigured = false;
         ws.onopen = () => {
             console.log("[Realtime] WebSocket connected to:", wsUrl);
             setRealtimeConnected(true);
@@ -72,20 +73,17 @@ export default function RealtimeAvatar(props) {
                     }
                 }
             }));
-            // Send initial greeting
-            ws.send(JSON.stringify({
-                type: "conversation.item.create",
-                item: {
-                    type: "message",
-                    role: "user",
-                    content: [{ type: "input_text", text: props.firstQuestion }]
-                }
-            }));
-            ws.send(JSON.stringify({ type: "response.create" }));
         };
-        ws.onmessage = (event) => {
+        ws.onmessage = async (event) => {
             try {
-                const data = JSON.parse(event.data);
+                let text;
+                if (event.data instanceof Blob) {
+                    text = await event.data.text();
+                }
+                else {
+                    text = event.data;
+                }
+                const data = JSON.parse(text);
                 console.log("[Realtime]", data.type, data);
                 switch (data.type) {
                     case "response.audio.delta":
@@ -123,8 +121,24 @@ export default function RealtimeAvatar(props) {
                         setStatus(`Помилка: ${data.error?.message || "unknown"}`);
                         break;
                     case "session.created":
+                        console.log("[Realtime] Session created");
+                        break;
                     case "session.updated":
-                        console.log("[Realtime] Session:", data.type);
+                        console.log("[Realtime] Session updated");
+                        if (!sessionConfigured) {
+                            sessionConfigured = true;
+                            console.log("[Realtime] Sending initial question");
+                            // Send initial greeting after session is configured
+                            ws.send(JSON.stringify({
+                                type: "conversation.item.create",
+                                item: {
+                                    type: "message",
+                                    role: "user",
+                                    content: [{ type: "input_text", text: props.firstQuestion }]
+                                }
+                            }));
+                            ws.send(JSON.stringify({ type: "response.create" }));
+                        }
                         break;
                     default:
                         console.log("[Realtime] Unhandled event:", data.type);

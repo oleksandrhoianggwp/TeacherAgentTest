@@ -213,6 +213,7 @@ export default function DemoSessionPage() {
                 livekitUrl={livekitUrl}
                 livekitToken={livekitToken}
                 liveAvatarSessionId={liveAvatarSessionId}
+                demoSessionId={demoSessionId!}
                 openingText={openingText}
                 firstQuestion={firstQuestion}
                 onTranscript={(type, text) => {

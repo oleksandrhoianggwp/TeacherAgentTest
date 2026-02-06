@@ -20,6 +20,7 @@ const envSchema = z.object({
   LIVEAVATAR_AVATAR_ID: z.string().min(1).optional(),
 
   OPENAI_API_KEY: z.string().min(1),
+  OPENAI_REALTIME_MODEL: z.string().optional(),
 
   DB_HOST: z.string().min(1),
   DB_PORT: z.coerce.number().int().positive().default(5432),

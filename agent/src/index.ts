@@ -5,7 +5,6 @@ import { getEnv } from "./env.js";
 import { createChatCompletion, type ChatMessage } from "./openai.js";
 import {
   createSessionToken,
-  createSessionTokenWithPersonaAndAvatar,
   listContexts,
   listVoices,
   startSession,
@@ -59,20 +58,10 @@ app.post("/internal/liveavatar/start", async (_req, reply) => {
     .safeParse((_req as any).body ?? {});
 
   const avatarId = parsed.success ? parsed.data.avatarId : undefined;
-  const voiceId = parsed.success ? parsed.data.voiceId : undefined;
-  const contextId = parsed.success ? parsed.data.contextId : undefined;
-  const language = parsed.success ? parsed.data.language : undefined;
-
-  const { sessionId, sessionToken } =
-    voiceId && contextId
-      ? await createSessionTokenWithPersonaAndAvatar(env, avatarId ?? env.LIVEAVATAR_AVATAR_ID, {
-          voiceId,
-          contextId,
-          language
-        })
-      : await createSessionToken(env, { avatarId });
-  const { livekitUrl, livekitToken } = await startSession(sessionToken);
-  return reply.send({ sessionId, sessionToken, livekitUrl, livekitToken });
+  // Force LITE mode - only visual avatar, ignore voice/context from request
+  const { sessionId, sessionToken } = await createSessionToken(env, { avatarId });
+  const { livekitUrl, livekitToken, wsUrl } = await startSession(sessionToken);
+  return reply.send({ sessionId, sessionToken, livekitUrl, livekitToken, wsUrl });
 });
 
 app.post("/internal/liveavatar/stop", async (req, reply) => {

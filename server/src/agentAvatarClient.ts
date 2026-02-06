@@ -49,6 +49,7 @@ export async function agentLiveAvatarStart(
   sessionToken: string;
   livekitUrl: string;
   livekitToken: string;
+  wsUrl: string | null;
 }> {
   return await postJson(`${env.AGENT_AVATAR_URL}/internal/liveavatar/start`, env, {
     avatarId: opts?.avatarId
@@ -58,7 +59,7 @@ export async function agentLiveAvatarStart(
 export async function agentLiveAvatarStartWithPersona(
   env: Env,
   persona: { avatarId?: string; voiceId: string; contextId: string; language?: string }
-): Promise<{ sessionId: string; sessionToken: string; livekitUrl: string; livekitToken: string }> {
+): Promise<{ sessionId: string; sessionToken: string; livekitUrl: string; livekitToken: string; wsUrl: string | null }> {
   return await postJson(`${env.AGENT_AVATAR_URL}/internal/liveavatar/start`, env, persona);
 }
 

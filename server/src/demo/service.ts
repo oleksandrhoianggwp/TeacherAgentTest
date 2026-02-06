@@ -26,6 +26,7 @@ export type DemoSession = {
       sessionToken?: string;
       livekitUrl?: string;
       livekitToken?: string;
+      wsUrl?: string | null;
     };
   };
   messages: Array<{ role: "user" | "assistant"; content: string }>;
@@ -128,6 +129,7 @@ export async function getDemoSession(db: Db, sessionId: string): Promise<DemoSes
             sessionToken?: string;
             livekitUrl?: string;
             livekitToken?: string;
+            wsUrl?: string | null;
           };
         };
         messages: Array<{ role: "user" | "assistant"; content: string }>;

@@ -20,6 +20,7 @@ import {
   getDemoTrainer
 } from "./service.js";
 import { buildTeacherSystemPrompt } from "./prompt.js";
+import { AudioRouter } from "../audioRouter.js";
 
 export async function registerDemoRoutes(app: FastifyInstance, deps: { db: Db; env: Env }) {
   const requestSchema = z.object({
@@ -102,7 +103,7 @@ export async function registerDemoRoutes(app: FastifyInstance, deps: { db: Db; e
     const requestedVoiceId = parsed.data.voiceId || avatar.voiceId;
     const requestedContextId = parsed.data.contextId || avatar.contextId;
 
-    const { sessionId, sessionToken, livekitUrl, livekitToken } =
+    const { sessionId, sessionToken, livekitUrl, livekitToken, wsUrl } =
       requestedVoiceId && requestedContextId
         ? await agentLiveAvatarStartWithPersona(deps.env, {
             avatarId: resolvedAvatarId,
@@ -112,6 +113,7 @@ export async function registerDemoRoutes(app: FastifyInstance, deps: { db: Db; e
           })
         : await agentLiveAvatarStart(deps.env, { avatarId: resolvedAvatarId });
 
+    // Store wsUrl for audio routing to LiveAvatar for lip-sync
     await deps.db.pool.query(
       `update demo_sessions set state = jsonb_set(state, '{liveAvatar}', $2::jsonb, true) where id = $1`,
       [
@@ -120,7 +122,8 @@ export async function registerDemoRoutes(app: FastifyInstance, deps: { db: Db; e
           sessionId,
           sessionToken,
           livekitUrl,
-          livekitToken
+          livekitToken,
+          wsUrl
         })
       ]
     );
@@ -130,6 +133,7 @@ export async function registerDemoRoutes(app: FastifyInstance, deps: { db: Db; e
       liveAvatarSessionId: sessionId,
       livekitUrl,
       livekitToken,
+      wsUrl, // Pass to frontend for AudioRouter
       openingText,
       firstQuestion: "Скажи, будь ласка, наскільки добре ти розумієш можливості AI у школах: від 1 до 10?"
     });
@@ -195,69 +199,78 @@ export async function registerDemoRoutes(app: FastifyInstance, deps: { db: Db; e
     return reply.send(out);
   });
 
-  // WebSocket proxy for OpenAI Realtime API
-  app.get("/api/realtime/:sessionId", { websocket: true }, (clientWs: any, req: any) => {
-    const sessionId = req.params.sessionId as string;
-    const model = "gpt-4o-realtime-preview-2024-12-17";
-    const openaiUrl = `wss://api.openai.com/v1/realtime?model=${model}`;
+  // Store active AudioRouter sessions for lip-sync
+  const audioRouters = new Map<string, AudioRouter>();
 
-    const openaiWs = new WebSocket(openaiUrl, {
-      headers: {
-        Authorization: `Bearer ${deps.env.OPENAI_API_KEY}`,
-        "OpenAI-Beta": "realtime=v1"
+  // WebSocket endpoint with AudioRouter for OpenAI Realtime + LiveAvatar lip-sync
+  app.get("/api/realtime/:demoSessionId", { websocket: true }, async (clientWs: any, req: any) => {
+    const demoSessionId = req.params.demoSessionId as string;
+
+    app.log.info(`[Realtime] Client connected for demo session ${demoSessionId}`);
+
+    // Get session from DB to get LiveAvatar wsUrl
+    const session = await getDemoSession(deps.db, demoSessionId);
+    if (!session) {
+      app.log.error(`[Realtime] Session not found: ${demoSessionId}`);
+      clientWs.close(1008, "Session not found");
+      return;
+    }
+
+    const liveAvatarState = session.state.liveAvatar;
+    const wsUrl = liveAvatarState?.wsUrl || null;
+
+    app.log.info(`[Realtime] LiveAvatar wsUrl: ${wsUrl || "none"}`);
+
+    // Get trainer for system prompt
+    const trainer = await getDemoTrainer(deps.db, session.demoToken);
+    const systemPrompt = trainer
+      ? buildTeacherSystemPrompt(trainer, session.userName)
+      : "You are a helpful assistant.";
+
+    // Create AudioRouter for this session
+    const router = new AudioRouter({
+      sessionId: demoSessionId,
+      sessionToken: liveAvatarState?.sessionToken || "",
+      livekitWsUrl: wsUrl,
+      systemPrompt,
+      env: deps.env,
+      onTranscript: (role, text) => {
+        app.log.info(`[Realtime] Transcript (${role}): ${text}`);
       }
     });
 
-    openaiWs.on("open", () => {
-      app.log.info(`[Realtime] OpenAI WebSocket opened for session ${sessionId}`);
-    });
+    audioRouters.set(demoSessionId, router);
 
-    openaiWs.on("message", (data: WebSocket.RawData) => {
-      try {
-        if (clientWs.readyState === WebSocket.OPEN) {
-          clientWs.send(data);
-        }
-      } catch (err) {
-        app.log.error(`[Realtime] Error forwarding from OpenAI: ${err}`);
-      }
-    });
+    // Connect router to OpenAI and LiveAvatar
+    try {
+      await router.connect(clientWs);
+      app.log.info(`[Realtime] AudioRouter connected for ${demoSessionId}`);
+    } catch (err: any) {
+      app.log.error(`[Realtime] AudioRouter connect error: ${err.message}`);
+      clientWs.close(1011, "Connection error");
+      return;
+    }
 
-    openaiWs.on("error", (err: Error) => {
-      app.log.error(`[Realtime] OpenAI WebSocket error: ${err}`);
-      if (clientWs.readyState === WebSocket.OPEN) {
-        clientWs.close(1011, "OpenAI connection error");
-      }
-    });
-
-    openaiWs.on("close", (code: number, reason: Buffer) => {
-      app.log.info(`[Realtime] OpenAI WebSocket closed: ${code} ${reason.toString()}`);
-      if (clientWs.readyState === WebSocket.OPEN) {
-        clientWs.close(code, reason.toString());
-      }
-    });
-
+    // Handle client messages
     clientWs.on("message", (data: WebSocket.RawData) => {
       try {
-        if (openaiWs.readyState === WebSocket.OPEN) {
-          openaiWs.send(data);
-        }
+        const dataStr = typeof data === "string" ? data : data.toString();
+        router.handleClientMessage(dataStr);
       } catch (err) {
-        app.log.error(`[Realtime] Error forwarding to OpenAI: ${err}`);
+        app.log.error(`[Realtime] Error handling client message: ${err}`);
       }
     });
 
     clientWs.on("error", (err: Error) => {
       app.log.error(`[Realtime] Client WebSocket error: ${err}`);
-      if (openaiWs.readyState === WebSocket.OPEN) {
-        openaiWs.close();
-      }
+      router.disconnect();
+      audioRouters.delete(demoSessionId);
     });
 
     clientWs.on("close", (code: number, reason: Buffer) => {
       app.log.info(`[Realtime] Client WebSocket closed: ${code} ${reason.toString()}`);
-      if (openaiWs.readyState === WebSocket.OPEN) {
-        openaiWs.close();
-      }
+      router.disconnect();
+      audioRouters.delete(demoSessionId);
     });
   });
 }
