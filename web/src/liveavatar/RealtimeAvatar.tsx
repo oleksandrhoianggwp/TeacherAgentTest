@@ -256,9 +256,9 @@ export default function RealtimeAvatar(props: RealtimeAvatarProps) {
   }
 
   return (
-    <div style={{ display: "flex", gap: "16px", marginTop: "16px" }}>
-      {/* Avatar - Left (bigger) */}
-      <div style={{ flex: "2", position: "relative", minHeight: "500px", background: "#000", borderRadius: "12px", overflow: "hidden" }}>
+    <div style={{ display: "flex", gap: "24px", marginTop: "16px" }}>
+      {/* Avatar - Left (equal size) */}
+      <div style={{ flex: "1", position: "relative", minHeight: "700px", background: "#000", borderRadius: "16px", overflow: "hidden" }}>
         <video
           ref={avatarVideoRef}
           autoPlay
@@ -283,32 +283,32 @@ export default function RealtimeAvatar(props: RealtimeAvatarProps) {
         <div
           style={{
             position: "absolute",
-            bottom: "12px",
-            left: "12px",
-            right: "12px",
-            fontSize: "14px",
+            bottom: "16px",
+            left: "16px",
+            right: "16px",
+            fontSize: "15px",
             color: "white",
-            background: "rgba(0,0,0,0.5)",
-            padding: "8px 12px",
-            borderRadius: "8px"
+            background: "rgba(0,0,0,0.6)",
+            padding: "12px 16px",
+            borderRadius: "10px"
           }}
         >
-          {status}
+          <strong>Марія</strong> - {status}
           {realtimeConnected && <span style={{ marginLeft: "8px", color: "#4ade80" }}>● Realtime</span>}
         </div>
       </div>
 
-      {/* User Webcam - Right (smaller) */}
-      <div style={{ flex: "1", minHeight: "500px", background: "#000", borderRadius: "12px", overflow: "hidden", position: "relative" }}>
+      {/* User Webcam - Right (equal size) */}
+      <div style={{ flex: "1", position: "relative", minHeight: "700px", background: "#000", borderRadius: "16px", overflow: "hidden" }}>
         <UserWebcam enabled={connected} />
 
         {/* Controls */}
-        <div style={{ position: "absolute", bottom: "12px", left: "12px", right: "12px" }}>
+        <div style={{ position: "absolute", bottom: "16px", left: "16px", right: "16px" }}>
           <button
             className={micEnabled ? "danger" : "primary"}
             onClick={toggleMic}
             disabled={!realtimeConnected}
-            style={{ width: "100%" }}
+            style={{ width: "100%", padding: "14px", fontSize: "16px" }}
           >
             {micEnabled ? "🎤 Вимкнути мікрофон" : "🎤 Увімкнути мікрофон"}
           </button>

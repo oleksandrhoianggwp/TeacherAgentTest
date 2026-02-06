@@ -19,7 +19,7 @@ import {
   getDemoSession,
   getDemoTrainer
 } from "./service.js";
-import { buildTeacherSystemPrompt } from "./prompt.js";
+import { buildTeacherSystemPrompt, buildRealtimeVoicePrompt } from "./prompt.js";
 import { AudioRouter } from "../audioRouter.js";
 
 export async function registerDemoRoutes(app: FastifyInstance, deps: { db: Db; env: Env }) {
@@ -82,7 +82,7 @@ export async function registerDemoRoutes(app: FastifyInstance, deps: { db: Db; e
     return reply.send({
       sessionId: session.id,
       openingText,
-      firstQuestion: "Скажи, будь ласка, наскільки добре ти розумієш можливості AI у школах: від 1 до 10?"
+      firstQuestion: "Почни урок"
     });
   });
 
@@ -135,7 +135,8 @@ export async function registerDemoRoutes(app: FastifyInstance, deps: { db: Db; e
       livekitToken,
       wsUrl, // Pass to frontend for AudioRouter
       openingText,
-      firstQuestion: "Скажи, будь ласка, наскільки добре ти розумієш можливості AI у школах: від 1 до 10?"
+      // Trigger AI to say greeting first
+      firstQuestion: "Почни урок"
     });
   });
 
@@ -221,11 +222,11 @@ export async function registerDemoRoutes(app: FastifyInstance, deps: { db: Db; e
 
     app.log.info(`[Realtime] LiveAvatar wsUrl: ${wsUrl || "none"}`);
 
-    // Get trainer for system prompt
+    // Get trainer for system prompt (use voice-specific prompt for Realtime)
     const trainer = await getDemoTrainer(deps.db, session.demoToken);
     const systemPrompt = trainer
-      ? buildTeacherSystemPrompt(trainer, session.userName)
-      : "You are a helpful assistant.";
+      ? buildRealtimeVoicePrompt(trainer, session.userName)
+      : "Ти Марія, віртуальна викладачка. Говори українською, дружньо та коротко.";
 
     // Create AudioRouter for this session
     const router = new AudioRouter({

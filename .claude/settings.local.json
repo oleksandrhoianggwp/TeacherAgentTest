@@ -6,7 +6,8 @@
       "Bash(docker-compose build:*)",
       "Bash(docker-compose restart:*)",
       "Bash(docker-compose logs:*)",
-      "Bash(node test-working-realtime.js:*)"
+      "Bash(node test-working-realtime.js:*)",
+      "Bash(npx tsc:*)"
     ]
   }
 }

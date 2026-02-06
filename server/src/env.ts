@@ -21,6 +21,7 @@ const envSchema = z.object({
 
   OPENAI_API_KEY: z.string().min(1),
   OPENAI_REALTIME_MODEL: z.string().optional(),
+  OPENAI_TRANSCRIBE_MODEL: z.string().optional(), // gpt-4o-transcribe for better Ukrainian
 
   DB_HOST: z.string().min(1),
   DB_PORT: z.coerce.number().int().positive().default(5432),

@@ -191,6 +191,9 @@ export class AudioRouter {
   private configureSession(): void {
     if (!this.openaiWs || this.openaiWs.readyState !== WebSocket.OPEN) return;
 
+    // Use gpt-4o-transcribe for better Ukrainian support, fallback to whisper-1
+    const transcribeModel = (this.options.env as any).OPENAI_TRANSCRIBE_MODEL || "whisper-1";
+
     const config = {
       type: "session.update",
       session: {
@@ -200,19 +203,20 @@ export class AudioRouter {
         input_audio_format: "pcm16",
         output_audio_format: "pcm16",
         input_audio_transcription: {
-          model: "whisper-1"
+          model: transcribeModel,
+          language: "uk" // Ukrainian hint for better transcription
         },
         turn_detection: {
           type: "server_vad",
           threshold: 0.5,
           prefix_padding_ms: 300,
-          silence_duration_ms: 1200,
+          silence_duration_ms: 1500, // Longer pause before responding
           create_response: true
         }
       }
     };
 
-    console.log("[AudioRouter] Sending session.update");
+    console.log(`[AudioRouter] Sending session.update with transcribe model: ${transcribeModel}`);
     this.openaiWs.send(JSON.stringify(config));
   }
 
